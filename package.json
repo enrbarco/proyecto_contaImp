@@ -2,6 +2,7 @@
   "name": "contaimp",
   "private": true,
   "scripts": {
+    "test:smoke": "node scripts/smoke.mjs",
     "install:all": "npm install --prefix frontend && npm install --prefix backend",
     "dev:web": "npm run dev --prefix frontend",
     "dev:api": "npm run dev --prefix backend"

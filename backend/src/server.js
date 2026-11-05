@@ -21,7 +21,7 @@ async function auth(req,res,next){
   if(!token)return fail(res,401,'Debes iniciar sesión');
   const payload=jwt.verify(token,process.env.JWT_SECRET,{algorithms:['HS256']});
   const r=await query('select id,role,active,password_version from users where id=$1',[payload.id]);
-  if(!r.rowCount||!r.rows[0].active||r.rows[0].password_version!==payload.passwordVersion)return fail(res,401,'Sesión no válida o vencida');
+  if(!r.rowCount||!r.rows[0].active||r.rows[0].role!==payload.role||r.rows[0].password_version!==payload.passwordVersion)return fail(res,401,'Sesión no válida o vencida');
   req.user=payload;next();
  }catch(err){if(err?.code)return next(err);return fail(res,401,'Sesión no válida o vencida')}
 } 
