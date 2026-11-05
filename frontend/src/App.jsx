@@ -1,0 +1,77 @@
+import React,{useEffect,useState} from 'react';
+import { LayoutDashboard, ClipboardList, LogOut, ShieldCheck, Plus, Search, Check, EyeOff, Eye, Pencil, X, RefreshCcw } from 'lucide-react';
+
+async function request(path, options={}){
+ const response=await fetch(`/api${path}`,{credentials:'include',headers:{'Content-Type':'application/json'},...options});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok) throw new Error(data.error||'No se pudo completar la solicitud');
+ return data;
+}
+const templateNames={cierre:'Cierre mensual',provisiones:'Provisiones',amortizaciones:'Amortizaciones',depreciaciones:'Depreciaciones',cronograma:'Cronograma'};
+export default function App(){
+ const [user,setUser]=useState(null),[checking,setChecking]=useState(true),[page,setPage]=useState('dashboard');
+ const [companies,setCompanies]=useState([]),[company,setCompany]=useState(''),[period,setPeriod]=useState('2026-11');
+ const [forms,setForms]=useState([]),[selected,setSelected]=useState(null),[template,setTemplate]=useState('cierre');
+ const [error,setError]=useState(''),[notice,setNotice]=useState(''),[query,setQuery]=useState(''),[showHidden,setShowHidden]=useState(false);
+ const [review,setReview]=useState([]);
+ const [login,setLogin]=useState({email:'',password:''}),[forgot,setForgot]=useState(false),[resetToken,setResetToken]=useState(new URLSearchParams(window.location.search).get('resetToken')||''),[resetEmail,setResetEmail]=useState(''),[resetPassword,setResetPassword]=useState(''),[resetAgain,setResetAgain]=useState(''),[authMessage,setAuthMessage]=useState(''),[authBusy,setAuthBusy]=useState(false),[activity,setActivity]=useState('');
+ const handleError=(e)=>{setError(e.message);setNotice('')};
+ useEffect(()=>{request('/auth/me').then(r=>setUser(r.user)).catch(()=>{}).finally(()=>setChecking(false))},[]);
+ useEffect(()=>{if(!user)return;request('/companies').then(r=>{setCompanies(r.companies);if(r.companies.length)setCompany(r.companies[0].id)}).catch(handleError)},[user]);
+ async function reloadForms(){if(!company)return;try{const r=await request(`/forms?companyId=${company}&period=${encodeURIComponent(period)}`);setForms(r.forms)}catch(e){handleError(e)}}
+ useEffect(()=>{if(user&&company)reloadForms()},[user,company,period]);
+ async function openForm(id){try{const r=await request(`/forms/${id}`);setSelected(r.form);setShowHidden(false);setPage('form');setError('')}catch(e){handleError(e)}}
+ async function createForm(){try{const r=await request('/forms',{method:'POST',body:JSON.stringify({companyId:company,period,template})});setNotice('Formulario creado');await reloadForms();await openForm(r.form.id)}catch(e){handleError(e)}}
+ async function updateActivity(id,patch){try{await request(`/activities/${id}`,{method:'PATCH',body:JSON.stringify(patch)});await openForm(selected.id)}catch(e){handleError(e)}}
+ async function addActivity(e){e.preventDefault();if(!activity.trim())return;try{await request(`/forms/${selected.id}/activities`,{method:'POST',body:JSON.stringify({description:activity})});setActivity('');await openForm(selected.id)}catch(e){handleError(e)}}
+ async function signIn(e){e.preventDefault();try{const r=await request('/auth/login',{method:'POST',body:JSON.stringify(login)});setUser(r.user);setError('');setPage('dashboard')}catch(e){handleError(e)}}
+ async function requestReset(e){
+  e.preventDefault();setError('');setAuthBusy(true);
+  try{const r=await request('/auth/forgot-password',{method:'POST',body:JSON.stringify({email:resetEmail})});setAuthMessage(r.message)}
+  catch(err){setError(err.message)}finally{setAuthBusy(false)}
+ }
+ async function confirmReset(e){
+  e.preventDefault();setError('');
+  if(resetPassword!==resetAgain){setError('Las contraseñas no coinciden');return}
+  setAuthBusy(true);
+  try{
+   const r=await request('/auth/reset-password',{method:'POST',body:JSON.stringify({token:resetToken,password:resetPassword})});
+   setAuthMessage(r.message);setResetToken('');setForgot(false);setResetPassword('');setResetAgain('');
+   window.history.replaceState({},'',window.location.pathname);
+  }catch(err){setError(err.message)}finally{setAuthBusy(false)}
+ }
+ async function signOut(){await request('/auth/logout',{method:'POST'}).catch(()=>{});setUser(null);setSelected(null);setCompanies([]);setForms([])}
+ useEffect(()=>{
+   if(!user)return;
+   // Tiempo de inactividad de 15 minutos: valor provisional según la guía del equipo.
+   let timer;
+   const reset=()=>{clearTimeout(timer);timer=setTimeout(()=>signOut(),15*60*1000)};
+   for(const event of ['pointerdown','keydown','scroll'])window.addEventListener(event,reset,{passive:true});
+   reset();
+   return ()=>{clearTimeout(timer);for(const event of ['pointerdown','keydown','scroll'])window.removeEventListener(event,reset)};
+ },[user]);
+ async function loadReview(){if(!company)return;try{const r=await request(`/review?companyId=${company}&period=${encodeURIComponent(period)}`);setReview(r.controls)}catch(e){handleError(e)}}
+ useEffect(()=>{if(user?.role==='administrador'&&company&&page==='review')loadReview()},[user,company,period,page]);
+ if(checking)return <div className="loading">Cargando ContaImp…</div>;
+ if(!user)return <main className="login-shell"><section className="login-side"><span className="mini-brand">C <b>CONTAIMP</b></span><div><small>PLATAFORMA DE CONTROL</small><h1>Bienvenido de vuelta</h1><p>Control contable de forma clara y organizada.</p><div className="role-pills"><span>ADMINISTRADOR</span><span>CONTADOR</span><span>CLIENTE</span></div></div><small>ContaImp · Control contable</small></section><section className="login-center"><div className="auth-card">{resetToken?<>
+  <h2>Nueva contraseña</h2><p>Ingresa una contraseña de al menos 8 caracteres.</p>
+  <form onSubmit={confirmReset}><label>Nueva contraseña</label><input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={resetPassword} onChange={e=>setResetPassword(e.target.value)}/><label>Confirmar contraseña</label><input type="password" autoComplete="new-password" required value={resetAgain} onChange={e=>setResetAgain(e.target.value)}/>{error&&<div className="error">{error}</div>}<button className="primary" disabled={authBusy}>Cambiar contraseña</button></form>
+ </>:forgot?<>
+  <h2>Recuperar contraseña</h2><p>Escribe tu correo y te enviaremos un enlace de recuperación.</p>
+  <form onSubmit={requestReset}><label>Correo</label><input type="email" required autoComplete="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="nombre@empresa.com"/>{error&&<div className="error">{error}</div>}{authMessage&&<p role="status">{authMessage}</p>}<button className="primary" disabled={authBusy}>Enviar enlace</button></form>
+  <button className="link" onClick={()=>{setForgot(false);setError('');setAuthMessage('')}}>Volver al ingreso</button>
+ </>:<>
+  <h2>Ingresar</h2><p>Accede con tu cuenta de ContaImp.</p>
+  {authMessage&&<p role="status">{authMessage}</p>}
+  <form onSubmit={signIn}><label>Correo</label><input type="email" required autoComplete="username" value={login.email} onChange={e=>setLogin({...login,email:e.target.value})} placeholder="nombre@empresa.com"/><label>Contraseña</label><input type="password" required autoComplete="current-password" value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/>{error&&<div className="error">{error}</div>}<button className="primary" type="submit">Ingresar</button></form>
+  <button className="link" onClick={()=>{setForgot(true);setError('');setAuthMessage('')}}>¿Olvidaste tu contraseña?</button>
+ </>}</div></section></main>;
+ const canEdit=user.role==='contador';
+ const visible=forms.filter(f=>f.template_name.toLowerCase().includes(query.toLowerCase()));
+ return <div className="layout"><aside className="sidebar"><div className="brand"><span className="brand-icon">C</span><b>CONTAIMP</b></div><button className={'nav '+(page==='dashboard'?'active':'')} onClick={()=>setPage('dashboard')}><LayoutDashboard size={18}/> Tablero</button><button className={'nav '+(['forms','form'].includes(page)?'active':'')} onClick={()=>setPage('forms')}><ClipboardList size={18}/> Formularios</button>{user.role==='administrador'&&<button className={'nav '+(page==='review'?'active':'')} onClick={()=>setPage('review')}><ShieldCheck size={18}/> Revisión</button>}<div className="side-bottom"><div className="user-badge"><span>{user.name.slice(0,1)}</span><div><strong>{user.name}</strong><small>{user.role.toUpperCase()}</small></div></div><button className="nav" onClick={signOut}><LogOut size={18}/> Cerrar sesión</button></div></aside><main className="content"><header className="topbar"><div><small>PLATAFORMA DE CONTROL</small><h1>{page==='dashboard'?'Tablero':page==='forms'?'Formularios':page==='review'?'Revisión de controles':selected?.template_name||'Formulario'}</h1></div><span className="role">{user.role}</span></header>{error&&<div className="error dismiss">{error}<button onClick={()=>setError('')}><X size={16}/></button></div>}{notice&&<div className="success">{notice}<button onClick={()=>setNotice('')}>×</button></div>}
+ {page==='dashboard'?<><div className="stats"><div className="stat"><small>EMPRESAS ASIGNADAS</small><strong>{companies.length}</strong></div><div className="stat"><small>FORMULARIOS DEL PERÍODO</small><strong>{forms.length}</strong></div><div className="stat"><small>PERÍODO SELECCIONADO</small><strong className="compact">{period}</strong></div></div><section className="card"><h2>Controles contables</h2><p>Consulta los formularios de las empresas a las que tienes acceso.</p><button className="primary small" onClick={()=>setPage('forms')}>Ver formularios →</button></section></>:null}
+ {page==='forms'&&<><section className="card filters"><div><label>Empresa</label><select value={company} onChange={e=>setCompany(e.target.value)}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div><label>Período</label><input type="month" value={period} onChange={e=>setPeriod(e.target.value)}/></div><div><label>Buscar tipo</label><div className="search"><Search size={16}/><input value={query} placeholder="Filtrar formularios" onChange={e=>setQuery(e.target.value)}/></div></div></section>{canEdit&&<section className="card create"><div><h2>Crear un formulario</h2><p>Selecciona la plantilla para la empresa y el período elegidos.</p></div><select aria-label="Plantilla" value={template} onChange={e=>setTemplate(e.target.value)}>{Object.entries(templateNames).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select><button className="primary small" disabled={!company} onClick={createForm}><Plus size={16}/> Crear formulario</button></section>}<section className="card"><h2>Formularios registrados</h2>{visible.length?<div className="table-wrap"><table><thead><tr><th>FORMULARIO</th><th>PERÍODO</th><th>ESTADO DEL PERÍODO</th><th>ACCIÓN</th></tr></thead><tbody>{visible.map(f=><tr key={f.id}><td>{f.template_name}</td><td>{f.period_month}</td><td><span className={'chip '+(f.period_status==='cerrado'?'closed':'open')}>{f.period_status}</span></td><td><button className="outline" onClick={()=>openForm(f.id)}>Ver detalle</button></td></tr>)}</tbody></table></div>:<p className="empty">No se encontraron controles.</p>}</section></>}
+ {page==='review'&&user.role==='administrador'&&<><section className="card filters"><div><label>Empresa</label><select value={company} onChange={e=>setCompany(e.target.value)}>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div><label>Período</label><input type="month" value={period} onChange={e=>setPeriod(e.target.value)}/></div><button className="outline" onClick={loadReview}><RefreshCcw size={16}/> Actualizar</button></section><section className="card"><h2>Seguimiento del período</h2><p>Actividades visibles completadas y pendientes, con observaciones registradas.</p>{review.length?<div className="table-wrap"><table><thead><tr><th>CONTROL</th><th>COMPLETADAS</th><th>PENDIENTES</th><th>AVANCE</th><th>OBSERVACIONES</th><th>ACCIÓN</th></tr></thead><tbody>{review.map(r=><tr key={r.id}><td>{r.template_name}</td><td>{r.completed} / {r.total}</td><td>{r.pending}</td><td>{r.progress}%</td><td>{r.observations}</td><td><button className="outline" onClick={()=>openForm(r.id)}>Revisar</button></td></tr>)}</tbody></table></div>:<p className="empty">No se encontraron controles para este período.</p>}</section></>}
+ {page==='form'&&selected&&<><div className="detail-head"><button className="outline" onClick={()=>setPage('forms')}>← Volver</button><span className={'chip '+(selected.period_status==='cerrado'?'closed':'open')}>{selected.period_status==='cerrado'?'Período cerrado':'Período abierto'}</span></div><section className="card"><div className="form-title"><div><h2>{selected.template_name}</h2><p>{selected.company_name} · {selected.period_month}</p></div><div className="progress">{selected.activities.length?Math.round(100*selected.activities.filter(a=>a.verified&&!a.hidden).length/Math.max(1,selected.activities.filter(a=>!a.hidden).length)):0}% completado</div></div>{selected.period_status==='cerrado'&&<p className="locked"><ShieldCheck size={18}/> Este período está cerrado. La información es de solo lectura.</p>}<div className="table-wrap"><table><thead><tr><th>ACTIVIDAD</th><th>VERIFICADA</th><th>VENCIMIENTO</th><th>OBSERVACIÓN</th>{canEdit&&selected.period_status==='abierto'&&<th>OPCIONES</th>}</tr></thead><tbody>{selected.activities.filter(a=>showHidden||!a.hidden).map(a=><tr key={a.id} className={a.hidden?'muted':''}><td>{a.description}{a.hidden&&' (oculta)'}</td><td>{canEdit&&selected.period_status==='abierto'?<input type="checkbox" checked={a.verified} onChange={e=>updateActivity(a.id,{verified:e.target.checked})}/>:a.verified?<Check size={16}/>: '—'}</td><td>{canEdit&&selected.period_status==='abierto'?<input type="date" defaultValue={a.due_date?.slice(0,10)||''} onBlur={e=>{if(e.target.value!==(a.due_date?.slice(0,10)||''))updateActivity(a.id,{dueDate:e.target.value||null})}}/>:(a.due_date?.slice(0,10)||'—')}</td><td>{canEdit&&selected.period_status==='abierto'?<input className="obs-input" defaultValue={a.note||''} onBlur={e=>{if(e.target.value!==a.note)updateActivity(a.id,{note:e.target.value})}}/>:(a.note||'—')}</td>{canEdit&&selected.period_status==='abierto'&&<td className="actions"><button title="Editar descripción" onClick={()=>{const n=window.prompt('Descripción de la actividad',a.description);if(n&&n.trim()!==a.description)updateActivity(a.id,{description:n.trim()})}}><Pencil size={16}/></button><button title={a.hidden?'Mostrar':'Ocultar'} onClick={()=>updateActivity(a.id,{hidden:!a.hidden})}>{a.hidden?<Eye size={16}/>:<EyeOff size={16}/>}</button></td>}</tr>)}</tbody></table></div><div className="form-bottom"><button className="link" onClick={()=>setShowHidden(v=>!v)}>{showHidden?'Ocultar actividades archivadas':'Mostrar actividades ocultas'}</button><button className="outline" onClick={()=>openForm(selected.id)}><RefreshCcw size={16}/> Actualizar</button></div>{canEdit&&selected.period_status==='abierto'&&<form className="add-row" onSubmit={addActivity}><input value={activity} onChange={e=>setActivity(e.target.value)} placeholder="Nueva actividad" required maxLength={250}/><button className="primary small"><Plus size={16}/> Agregar actividad</button></form>}</section></>}
+ </main></div>
+}
