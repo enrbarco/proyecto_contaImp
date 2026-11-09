@@ -10,7 +10,14 @@ import nodemailer from 'nodemailer';
 import {pool,query} from './db.js';
 
 if(!process.env.JWT_SECRET||process.env.JWT_SECRET.length<32||!process.env.DATABASE_URL){console.error('Configura JWT_SECRET (32 caracteres mínimo) y DATABASE_URL en backend/.env');process.exit(1)}
-const app=express();app.use(helmet());app.use(express.json({limit:'100kb'}));app.use(cookieParser());
+const app = express();
+
+// ContaImp se ejecuta detrás del proxy de Vercel.
+app.set('trust proxy', 1);
+
+app.use(helmet());
+app.use(express.json({ limit: '100kb' }));
+app.use(cookieParser());
 const authLimit=rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:'draft-7',legacyHeaders:false});
 const fail=(res,status,msg)=>res.status(status).json({error:msg});
 const asyncRoute=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
