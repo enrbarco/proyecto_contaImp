@@ -111,3 +111,17 @@ p,small{color:#777984}
 @media(max-width:430px){.figma-kpis{gap:9px}.figma-kpi{padding:15px 12px;min-height:122px}.figma-kpi>span{font-size:9px}.figma-kpi>small{font-size:10px}.figma-kpi>strong{font-size:27px}.figma-control-row label{width:100%}.figma-control-row select,.figma-control-row input{width:100%;max-width:none}}
 /* The Figma dashboard uses its single title in the white header. */
 .page-content:has(.figma-dashboard)>.page-heading{display:none}
+
+/* Pantallas administrativas de Figma */
+.admin-extra{display:grid;gap:18px}.admin-extra .panel{padding:24px}.inline-admin{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.inline-admin input,.inline-admin select,.admin-extra table select{border:1px solid #e0e0e5;border-radius:10px;background:#fff;padding:10px 12px;font-size:12px;color:#24252b;min-height:41px}.inline-admin input{min-width:220px}.inline-admin select{min-width:230px}.admin-hint{margin-top:25px;padding:18px;border:1px solid #ececf0;border-radius:12px;background:#fafafa;overflow-wrap:anywhere;color:#6b6b77;font-size:11px}.admin-hint strong{display:block;margin-bottom:10px;color:#26262c}.admin-hint>div{margin-top:6px}.admin-hint code{color:#73737d}.admin-check{display:flex;align-items:center;gap:10px;padding:7px 3px;font-size:12px}.history-detail{max-width:350px;white-space:normal;overflow-wrap:anywhere;font-size:11px;color:#767781}.admin-extra .table-scroll{overflow:auto}.admin-extra table{min-width:740px}.admin-extra td{font-size:12px}.admin-extra th{font-size:10px}.auth-feature{background:#1d1e23}.auth-intro em{color:#86bb81}.auth-features svg{color:#9acc88}.auth-symbol{background:#efeff1;color:#24252c}.auth-layout .button-green{background:#191a20}.auth-layout .button-green:hover{background:#35363c}@media(max-width:760px){.admin-extra .panel{padding:16px}.inline-admin>*{width:100%;max-width:100%}}
+/* ==========================================
+   CORRECCIÓN DEL TÍTULO EN EL LOGIN
+   ========================================== */
+
+.auth-feature .auth-intro h1 {
+    color: #FFFFFF;
+}
+
+.auth-feature .auth-intro h1 em {
+    color: #86BB81;
+}

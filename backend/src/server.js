@@ -96,5 +96,71 @@ app.get('/api/forms/:id',asyncRoute(async(req,res)=>{const f=await formForUser(r
 app.post('/api/forms/:id/activities',asyncRoute(async(req,res)=>{if(req.user.role!=='contador')return fail(res,403,'Solo el contador puede editar controles');const form=await formForUser(req.user,req.params.id);if(!form)return fail(res,404,'Formulario no encontrado');if(form.period_status!=='abierto')return fail(res,409,'Período cerrado');const description=req.body.description;if(typeof description!=='string'||!description.trim()||description.length>250)return fail(res,400,'Descripción inválida');const r=await query('insert into activities(form_id,description,position) values ($1,$2,(select coalesce(max(position),0)+1 from activities where form_id=$1)) returning id',[form.id,description.trim()]);res.status(201).json({activity:r.rows[0]})}));
 app.patch('/api/activities/:id',asyncRoute(async(req,res)=>{if(req.user.role!=='contador')return fail(res,403,'Solo el contador puede editar controles');const a=await query('select form_id from activities where id=$1',[req.params.id]);if(!a.rowCount)return fail(res,404,'Actividad no encontrada');const form=await formForUser(req.user,a.rows[0].form_id);if(!form)return fail(res,404,'Actividad no encontrada');if(form.period_status!=='abierto')return fail(res,409,'Período cerrado');const allowed={description:'description',verified:'verified',hidden:'hidden',note:'note',dueDate:'due_date'};const entries=Object.entries(req.body).filter(([k])=>allowed[k]);if(!entries.length)return fail(res,400,'Sin cambios válidos');for(const [k,v] of entries){if((k==='verified'||k==='hidden')&&typeof v!=='boolean')return fail(res,400,'Valor booleano inválido');if(k==='description'&&(typeof v!=='string'||!v.trim()||v.length>250))return fail(res,400,'Descripción inválida');if(k==='note'&&(typeof v!=='string'||v.length>2000))return fail(res,400,'Observación inválida');if(k==='dueDate'&&v!==null&&(!/^\d{4}-\d{2}-\d{2}$/.test(v)))return fail(res,400,'Fecha inválida')}
  const assigns=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');const values=entries.map(([k,v])=>k==='description'?v.trim():v);const r=await query(`update activities set ${assigns} where id=$${values.length+1} returning id`,[...values,req.params.id]);res.json({activity:r.rows[0]})}));
+// Módulos del Administrador: usuarios, períodos, empresas y bitácora.
+// Las escrituras se autorizan en el servidor, nunca solo en la interfaz.
+const adminOnly=(req,res,next)=>req.user.role==='administrador'?next():fail(res,403,'Solo el administrador puede realizar esta operación');
+const audit=async(actor,entity,entityId,action,details={})=>query('insert into audit_log(actor,entity,entity_id,action,details) values ($1,$2,$3,$4,$5)',[actor,entity,entityId,action,JSON.stringify(details)]);
+app.get('/api/admin/users',adminOnly,asyncRoute(async(_req,res)=>{
+ const r=await query(`select u.id,u.name,u.email,u.role,u.active,u.created_at,coalesce(array_agg(uc.company_id::text) filter(where uc.company_id is not null),'{}') as company_ids from users u left join user_company uc on uc.user_id=u.id group by u.id order by u.name`);
+ res.json({users:r.rows});
+}));
+app.post('/api/admin/users',adminOnly,asyncRoute(async(req,res)=>{
+ const {name,email,password,role,companyIds=[]}=req.body;
+ if(typeof name!=='string'||!name.trim()||name.length>100||typeof email!=='string'||email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||typeof password!=='string'||password.length<12||!['administrador','contador','cliente'].includes(role)||!Array.isArray(companyIds)||companyIds.some(v=>typeof v!=='string'))return fail(res,400,'Revisa nombre, correo, rol y contraseña (mínimo 12 caracteres).');
+ const client=await pool.connect();try{await client.query('BEGIN');const hash=await bcrypt.hash(password,12);
+ const r=await client.query('insert into users(name,email,password_hash,role) values ($1,$2,$3,$4) returning id,name,email,role,active',[name.trim(),email.trim().toLowerCase(),hash,role]);
+ for(const companyId of [...new Set(companyIds)])await client.query('insert into user_company(user_id,company_id) values($1,$2)',[r.rows[0].id,companyId]);
+ await client.query('insert into audit_log(actor,entity,entity_id,action,details) values ($1,$2,$3,$4,$5)',[req.user.id,'users',r.rows[0].id,'crear',JSON.stringify({email:r.rows[0].email,role})]);
+ await client.query('COMMIT');res.status(201).json({user:r.rows[0]});
+ }catch(e){await client.query('ROLLBACK');if(e.code==='23505')return fail(res,409,'El correo ya existe');if(e.code==='23503'||e.code==='22P02')return fail(res,400,'Empresa inválida');throw e}finally{client.release()}
+}));
+app.patch('/api/admin/users/:id',adminOnly,asyncRoute(async(req,res)=>{
+ const {name,role,active,companyIds}=req.body;
+ if(name!==undefined&&(typeof name!=='string'||!name.trim()||name.length>100))return fail(res,400,'Nombre inválido');
+ if(role!==undefined&&!['administrador','contador','cliente'].includes(role))return fail(res,400,'Rol inválido');
+ if(active!==undefined&&typeof active!=='boolean')return fail(res,400,'Estado inválido');
+ if(companyIds!==undefined&&(!Array.isArray(companyIds)||companyIds.some(v=>typeof v!=='string')))return fail(res,400,'Empresas inválidas');
+ if(req.user.id===req.params.id&&(role&&role!=='administrador'||active===false))return fail(res,409,'No puedes quitar tus propios permisos de administrador');
+ const client=await pool.connect();try{await client.query('BEGIN');
+ const r=await client.query('update users set name=coalesce($1,name),role=coalesce($2,role),active=coalesce($3,active),password_version=password_version+1 where id=$4 returning id,name,email,role,active',[name?.trim()??null,role??null,active??null,req.params.id]);
+ if(!r.rowCount){await client.query('ROLLBACK');return fail(res,404,'Usuario no encontrado')}
+ if(companyIds!==undefined){await client.query('delete from user_company where user_id=$1',[req.params.id]);for(const id of [...new Set(companyIds)])await client.query('insert into user_company(user_id,company_id) values($1,$2)',[req.params.id,id])}
+ await client.query('insert into audit_log(actor,entity,entity_id,action,details) values($1,$2,$3,$4,$5)',[req.user.id,'users',req.params.id,'actualizar',JSON.stringify({name,role,active,companyIds})]);
+ await client.query('COMMIT');res.json({user:r.rows[0]});
+ }catch(e){await client.query('ROLLBACK');if(e.code==='23503'||e.code==='22P02')return fail(res,400,'Empresa inválida');throw e}finally{client.release()}
+}));
+app.get('/api/admin/periods',adminOnly,asyncRoute(async(req,res)=>{
+ const r=await query(`select p.id,p.month,p.status,p.company_id,c.name as company_name,p.closed_at,coalesce(count(distinct f.id),0)::int as form_count,coalesce(count(a.id) filter(where a.hidden=false),0)::int as total,coalesce(count(a.id) filter(where a.hidden=false and a.verified),0)::int as completed from periods p join companies c on c.id=p.company_id left join forms f on f.period_id=p.id left join activities a on a.form_id=f.id where ($1::text is null or p.company_id::text=$1) group by p.id,c.name order by p.month desc,c.name`,[req.query.companyId||null]);
+ res.json({periods:r.rows});
+}));
+app.post('/api/admin/periods',adminOnly,asyncRoute(async(req,res)=>{
+ const {companyId,month}=req.body;if(typeof companyId!=='string'||!validMonth(month))return fail(res,400,'Empresa y mes válidos requeridos');
+ const r=await query('insert into periods(company_id,month,status) values($1,$2,$3) on conflict(company_id,month) do nothing returning id',[companyId,month,'abierto']);
+ if(!r.rowCount)return fail(res,409,'Este período ya existe');await audit(req.user.id,'periods',r.rows[0].id,'abrir',{companyId,month});res.status(201).json({period:r.rows[0]});
+}));
+app.patch('/api/admin/periods/:id',adminOnly,asyncRoute(async(req,res)=>{
+ const {status}=req.body;if(!['abierto','cerrado'].includes(status))return fail(res,400,'Estado inválido');
+ const client=await pool.connect();try{await client.query('BEGIN');const old=await client.query('select id,status,company_id,month from periods where id=$1 for update',[req.params.id]);
+ if(!old.rowCount){await client.query('ROLLBACK');return fail(res,404,'Período no encontrado')}
+ if(status==='cerrado'){const pending=await client.query('select count(*)::int as n from activities a join forms f on f.id=a.form_id where f.period_id=$1 and a.hidden=false and a.verified=false',[req.params.id]);if(pending.rows[0].n){await client.query('ROLLBACK');return fail(res,409,`No se puede cerrar: ${pending.rows[0].n} actividad(es) pendiente(s).`)}}
+ const r=await client.query('update periods set status=$1,closed_by=$2,closed_at=case when $1=$3 then now() else null end where id=$4 returning id,status',[status,status==='cerrado'?req.user.id:null,'cerrado',req.params.id]);
+ await client.query('insert into audit_log(actor,entity,entity_id,action,details) values($1,$2,$3,$4,$5)',[req.user.id,'periods',req.params.id,status==='cerrado'?'cerrar':'reabrir',JSON.stringify({month:old.rows[0].month,previous:old.rows[0].status})]);
+ await client.query('COMMIT');res.json({period:r.rows[0]});
+ }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+}));
+app.get('/api/admin/history',adminOnly,asyncRoute(async(req,res)=>{
+ const limit=Math.min(Math.max(Number(req.query.limit)||100,1),200);
+ const r=await query('select a.id,a.entity,a.action,a.changed_at,a.details,u.name as actor_name from audit_log a left join users u on u.id=a.actor order by a.changed_at desc limit $1',[limit]);res.json({history:r.rows});
+}));
+app.post('/api/admin/companies',adminOnly,asyncRoute(async(req,res)=>{
+ const name=req.body.name;if(typeof name!=='string'||!name.trim()||name.length>150)return fail(res,400,'Nombre de empresa inválido');
+ try{const r=await query('insert into companies(name) values($1) returning id,name',[name.trim()]);await audit(req.user.id,'companies',r.rows[0].id,'crear',{name:r.rows[0].name});res.status(201).json({company:r.rows[0]})}catch(e){if(e.code==='23505')return fail(res,409,'La empresa ya existe');throw e}
+}));
 app.use((err,_req,res,_next)=>{console.error(err);res.status(500).json({error:'Error interno del servidor'})});
-const port=Number(process.env.PORT||4000);app.listen(port,()=>console.log(`ContaImp API: http://localhost:${port}`));
+// Vercel detecta el export por defecto y ejecuta Express como función.
+// En desarrollo local conservamos el puerto 4000.
+export default app;
+if (!process.env.VERCEL) {
+ const port=Number(process.env.PORT||4000);
+ app.listen(port,()=>console.log(`ContaImp API: http://localhost:${port}`));
+}
