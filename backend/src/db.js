@@ -4,24 +4,11 @@ import pg from 'pg';
 const useSSL = process.env.DATABASE_SSL === 'true';
 
 const caBase64 = process.env.DATABASE_CA_BASE64;
-import { createHash } from 'node:crypto';
+const parametrosConexion = process.env.DATABASE_URL
+  ? [...new URL(process.env.DATABASE_URL).searchParams.keys()]
+  : [];
 
-console.log('DIAGNOSTICO SSL:', {
-  sslActivo: process.env.DATABASE_SSL === 'true',
-  certificadoCargado: Boolean(caBase64),
-  certificadoSHA256: caBase64
-    ? createHash('sha256')
-        .update(Buffer.from(caBase64, 'base64'))
-        .digest('hex')
-    : 'NO DISPONIBLE',
-  servidor: process.env.DATABASE_URL
-    ? new URL(process.env.DATABASE_URL).hostname
-    : 'NO CONFIGURADO',
-  puerto: process.env.DATABASE_URL
-    ? new URL(process.env.DATABASE_URL).port
-    : 'NO CONFIGURADO'
-});
-
+console.log('PARAMETROS_DATABASE_URL:', parametrosConexion);
 if (useSSL && !caBase64) {
   throw new Error(
     'Falta DATABASE_CA_BASE64 para verificar el certificado SSL.'
