@@ -73,7 +73,7 @@ app.get('/api/auth/me',auth,asyncRoute(async(req,res)=>{const r=await query('sel
 app.post('/api/auth/logout',(_req,res)=>{res.clearCookie('contaimp_session',{path:'/'});res.json({ok:true})});
 app.use('/api',auth);
 app.get('/api/companies',asyncRoute(async(req,res)=>{const r=req.user.role==='administrador'?await query('select id,name from companies order by name'):await query('select c.id,c.name from companies c join user_company uc on uc.company_id=c.id where uc.user_id=$1 order by c.name',[req.user.id]);res.json({companies:r.rows})}));
-app.get('/api/templates',asyncRoute(async(_req,res)=>{const r=await query('select id,name from templates order by id');res.json({templates:r.rows})}));
+app.get('/api/templates',asyncRoute(async(_req,res)=>{const r=await query('select id,code,name from templates order by name');res.json({templates:r.rows})}));
 app.get('/api/forms',asyncRoute(async(req,res)=>{const {companyId,period}=req.query;if(!companyId||!validMonth(period))return fail(res,400,'Empresa y período son necesarios');if(!(await canAccess(req.user,companyId)))return fail(res,403,'No tienes acceso a esta empresa');const r=await query(`select f.id,t.name as template_name,p.month as period_month,p.status as period_status from forms f join templates t on t.id=f.template_id join periods p on p.id=f.period_id where f.company_id=$1 and p.month=$2 order by f.created_at desc`,[companyId,period]);res.json({forms:r.rows})}));
 // HU-04: estado consolidado de los controles para el administrador.
 app.get('/api/review',asyncRoute(async(req,res)=>{
