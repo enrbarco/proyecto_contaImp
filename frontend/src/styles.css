@@ -17,7 +17,8 @@ p,small{color:#777984}
 .logo-mark{height:33px;width:33px;background:#1b1c20;border-radius:10px;font-size:20px;letter-spacing:0}
 .logo-spark{display:none}
 .app-sidebar{flex:0 0 244px;width:244px;background:#fdfdfd;padding:24px 18px 24px;border-right:1px solid #dfdfe2}
-.side-brand{padding:0 7px 30px;margin:0 -18px 16px;padding-left:24px;border-bottom:1px solid #e6e6e8;min-height:66px}
+.side-brand{padding:0 7px 30px;margin:0 -18px 16px;padding-left:24px;min-height:66px}
+.drawer-logo{display:block;width:132px;max-height:48px;object-fit:contain}
 .side-caption{display:none}
 .side-item{font-size:13px;font-weight:500;color:#656772;border-radius:13px;padding:14px 13px;gap:12px;margin:1px 0;min-height:46px}
 .side-item:hover{background:#f4f4f5;color:#25262a}
@@ -125,3 +126,18 @@ p,small{color:#777984}
 .auth-feature .auth-intro h1 em {
     color: #86BB81;
 }
+
+
+/* Acceso centrado, alineado con la identidad de la página de bienvenida. */
+.auth-layout{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:#f3f6f8}
+.auth-layout .auth-box{position:relative;width:min(100%,440px);padding:38px 40px 40px;background:#fff;border:1px solid rgba(11,42,74,.12);border-radius:22px;box-shadow:0 20px 55px rgba(11,42,74,.12)}
+.auth-home-link{display:inline-flex;align-items:center;gap:8px;margin:0 0 25px;padding:8px 0;border:0;background:transparent;color:#0b2a4a;font-size:14px;font-weight:650;cursor:pointer}
+.auth-home-link:hover{color:#173e65}
+.auth-layout .auth-box h2{margin:0 0 24px;text-align:center;color:#202b35;font-size:28px;letter-spacing:-.6px}
+.auth-layout .auth-box .field>span{color:#465565}
+.auth-layout .auth-box .field input{border-color:#dce3e9;border-radius:10px;min-height:46px}
+.auth-layout .auth-box .field input:focus{border-color:#0b2a4a;box-shadow:0 0 0 3px rgba(11,42,74,.1)}
+.auth-layout .forgot-link{color:#0b2a4a}
+.auth-layout .button-green{background:#0b2a4a;border-radius:999px;min-height:48px}
+.auth-layout .button-green:hover{background:#173e65}
+@media(max-width:520px){.auth-layout{padding:20px 15px}.auth-layout .auth-box{padding:28px 22px 30px;border-radius:18px}}
