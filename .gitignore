@@ -17,3 +17,6 @@ dist/
 *.dump
 *.backup
 .DS_Store
+
+.vercel
+.env*
