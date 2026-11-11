@@ -10,22 +10,54 @@ create table if not exists forms(id uuid primary key default gen_random_uuid(),c
 create table if not exists activities(id uuid primary key default gen_random_uuid(),form_id uuid not null references forms(id) on delete cascade,description text not null,position integer not null default 0,verified boolean not null default false,hidden boolean not null default false,note text not null default '',due_date date);
 create table if not exists audit_log(id uuid primary key default gen_random_uuid(),actor uuid references users(id),entity text not null,entity_id uuid,action text not null,changed_at timestamptz not null default now(),details jsonb);
 -- Bloqueo a nivel de base de datos (no depende del frontend).
-create or replace function assert_open_form() returns trigger language plpgsql as $$
-declare f_id uuid; p_status text;
+create or replace function assert_period_is_open(period_id_to_check uuid) returns void language plpgsql as $$
+declare current_status text;
 begin
-  f_id := case when TG_OP='DELETE' then old.form_id else new.form_id end;
-  select p.status into p_status from forms f join periods p on p.id=f.period_id where f.id=f_id;
-  if p_status <> 'abierto' then raise exception 'Período cerrado'; end if;
-  return case when TG_OP='DELETE' then old else new end;
+ select p.status into current_status from periods p where p.id=period_id_to_check for update;
+ if current_status is distinct from 'abierto' then raise exception 'Período cerrado'; end if;
+end $$;
+create or replace function assert_open_form() returns trigger language plpgsql as $$
+declare target_form_id uuid; target_period_id uuid; form_ids uuid[];
+begin
+ if TG_OP='INSERT' then
+  form_ids := array[new.form_id];
+ elsif TG_OP='DELETE' then
+  form_ids := array[old.form_id];
+ else
+  form_ids := array[old.form_id,new.form_id];
+ end if;
+ for target_form_id in
+  select distinct form_id from unnest(form_ids) as forms_to_lock(form_id) order by form_id
+ loop
+  perform 1 from forms f where f.id=target_form_id for update;
+ end loop;
+ for target_period_id in
+  select distinct f.period_id from forms f where f.id=any(form_ids) order by f.period_id
+  loop
+  perform assert_period_is_open(target_period_id);
+ end loop;
+ if TG_OP='DELETE' then return old; end if;
+ return new;
 end $$;
 drop trigger if exists block_closed_activities on activities;
 create trigger block_closed_activities before insert or update or delete on activities for each row execute function assert_open_form();
 create or replace function assert_open_period_on_form() returns trigger language plpgsql as $$
-declare status_now text;
+declare target_period_id uuid; period_ids uuid[];
 begin
- select status into status_now from periods where id=coalesce(new.period_id,old.period_id);
- if status_now <> 'abierto' then raise exception 'Período cerrado'; end if;
- return case when TG_OP='DELETE' then old else new end;
+ if TG_OP='INSERT' then
+  period_ids := array[new.period_id];
+ elsif TG_OP='DELETE' then
+  period_ids := array[old.period_id];
+ else
+  period_ids := array[old.period_id,new.period_id];
+ end if;
+ for target_period_id in
+  select distinct p_id from unnest(period_ids) as periods_to_check(p_id) order by p_id
+ loop
+  perform assert_period_is_open(target_period_id);
+ end loop;
+ if TG_OP='DELETE' then return old; end if;
+ return new;
 end $$;
 drop trigger if exists block_closed_forms on forms;
 create trigger block_closed_forms before insert or update or delete on forms for each row execute function assert_open_period_on_form();

@@ -33,7 +33,29 @@ async function auth(req,res,next){
  }catch(err){if(err?.code)return next(err);return fail(res,401,'Sesión no válida o vencida')}
 } 
 async function canAccess(user,companyId){if(user.role==='administrador')return true;const r=await query('select 1 from user_company where user_id=$1 and company_id=$2',[user.id,companyId]);return r.rowCount>0}
-async function formForUser(user,id){const r=await query(`select f.*, c.name as company_name,p.month as period_month,p.status as period_status,t.name as template_name from forms f join companies c on c.id=f.company_id join periods p on p.id=f.period_id join templates t on t.id=f.template_id where f.id=$1`,[id]);if(!r.rowCount)return null;const f=r.rows[0];if(!(await canAccess(user,f.company_id)))return null;return f}
+async function formForUser(user,id){
+ const r=await query(`select f.*, c.name as company_name,p.month as period_month,p.status as period_status,t.name as template_name from forms f join companies c on c.id=f.company_id join periods p on p.id=f.period_id join templates t on t.id=f.template_id where f.id=$1`,[id]);
+ if(!r.rowCount)return {kind:'not-found'};
+ const form=r.rows[0];
+ if(!(await canAccess(user,form.company_id)))return {kind:'forbidden'};
+ return {kind:'ok',form};
+}
+function formAccessFailure(res,access){
+ if(access.kind==='forbidden')return fail(res,403,'No tienes permiso para consultar controles de esta empresa');
+ if(access.kind==='not-found')return fail(res,404,'Formulario no encontrado');
+ return null;
+}
+async function activityForUser(user,id){
+ const r=await query('select id,form_id,note from activities where id=$1',[id]);
+ if(!r.rowCount)return {kind:'activity-not-found'};
+ const access=await formForUser(user,r.rows[0].form_id);
+ if(access.kind!=='ok')return access;
+ return {kind:'ok',activity:r.rows[0],form:access.form};
+}
+function activityAccessFailure(res,access){
+ if(access.kind==='activity-not-found')return fail(res,404,'Actividad no encontrada');
+ return formAccessFailure(res,access);
+}
 function validMonth(v){return /^\d{4}-(0[1-9]|1[0-2])$/.test(v||'')}
 app.get('/api/health',asyncRoute(async(_req,res)=>{await query('select 1');res.json({status:'ok',database:'connected'})}));
 app.post('/api/auth/login',authLimit,asyncRoute(async(req,res)=>{const {email,password}=req.body;if(typeof email!=='string'||typeof password!=='string')return fail(res,400,'Correo y contraseña son obligatorios');const r=await query('select * from users where lower(email)=lower($1) and active=true',[email.trim()]);if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return fail(res,401,'Correo o contraseña incorrectos');const user=userSafe(r.rows[0]);const token=jwt.sign({...user,passwordVersion:r.rows[0].password_version},process.env.JWT_SECRET,{expiresIn:'30m',algorithm:'HS256'});res.cookie('contaimp_session',token,{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:30*60*1000,path:'/'});res.json({user})}));
@@ -81,6 +103,22 @@ app.post('/api/auth/logout',(_req,res)=>{res.clearCookie('contaimp_session',{pat
 app.use('/api',auth);
 app.get('/api/companies',asyncRoute(async(req,res)=>{const r=req.user.role==='administrador'?await query('select id,name from companies order by name'):await query('select c.id,c.name from companies c join user_company uc on uc.company_id=c.id where uc.user_id=$1 order by c.name',[req.user.id]);res.json({companies:r.rows})}));
 app.get('/api/templates',asyncRoute(async(_req,res)=>{const r=await query('select id,code,name from templates order by name');res.json({templates:r.rows})}));
+app.get('/api/templates/:code/activities',asyncRoute(async(req,res)=>{
+ const r=await query(`
+  select t.id,t.code,t.name,
+    coalesce(
+      json_agg(json_build_object('description',ta.description,'position',ta.position) order by ta.position,ta.id)
+        filter(where ta.id is not null),
+      '[]'::json
+    ) as activities
+  from templates t
+  left join template_activities ta on ta.template_id=t.id
+  where t.code=$1
+  group by t.id
+ `,[req.params.code]);
+ if(!r.rowCount)return fail(res,404,'Plantilla no encontrada');
+ const {activities,...template}=r.rows[0];res.json({template,activities});
+}));
 app.get('/api/forms',asyncRoute(async(req,res)=>{const {companyId,period}=req.query;if(!companyId||!validMonth(period))return fail(res,400,'Empresa y período son necesarios');if(!(await canAccess(req.user,companyId)))return fail(res,403,'No tienes acceso a esta empresa');const r=await query(`select f.id,t.name as template_name,p.month as period_month,p.status as period_status from forms f join templates t on t.id=f.template_id join periods p on p.id=f.period_id where f.company_id=$1 and p.month=$2 order by f.created_at desc`,[companyId,period]);res.json({forms:r.rows})}));
 // HU-04: estado consolidado de los controles para el administrador.
 app.get('/api/review',asyncRoute(async(req,res)=>{
@@ -99,9 +137,37 @@ app.get('/api/review',asyncRoute(async(req,res)=>{
  res.json({controls:r.rows.map(row=>({...row,progress:row.total?Math.round(100*row.completed/row.total):0}))});
 }));
 app.post('/api/forms',asyncRoute(async(req,res)=>{if(req.user.role!=='contador')return fail(res,403,'Solo el contador puede crear controles');const {companyId,period,template}=req.body;if(!companyId||!validMonth(period)||typeof template!=='string')return fail(res,400,'Empresa, período y plantilla requeridos');if(!(await canAccess(req.user,companyId)))return fail(res,403,'Empresa no autorizada');const client=await pool.connect();try{await client.query('BEGIN');const p=await client.query('select id,status from periods where company_id=$1 and month=$2 for update',[companyId,period]);if(!p.rowCount){await client.query('ROLLBACK');return fail(res,409,'El administrador debe abrir primero el período')};if(p.rows[0].status!=='abierto'){await client.query('ROLLBACK');return fail(res,409,'Período cerrado')};const t=await client.query('select id from templates where code=$1',[template]);if(!t.rowCount){await client.query('ROLLBACK');return fail(res,400,'Plantilla desconocida')};const existing=await client.query('select id from forms where period_id=$1 and template_id=$2',[p.rows[0].id,t.rows[0].id]);if(existing.rowCount){await client.query('ROLLBACK');return fail(res,409,'Este formulario ya existe para el período')};const f=await client.query('insert into forms(company_id,period_id,template_id,created_by) values ($1,$2,$3,$4) returning id',[companyId,p.rows[0].id,t.rows[0].id,req.user.id]);await client.query('insert into activities(form_id,description,position) select $1,description,position from template_activities where template_id=$2 order by position',[f.rows[0].id,t.rows[0].id]);await client.query('COMMIT');res.status(201).json({form:f.rows[0]})}catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}}));
-app.get('/api/forms/:id',asyncRoute(async(req,res)=>{const f=await formForUser(req.user,req.params.id);if(!f)return fail(res,404,'Formulario no encontrado');const activities=await query('select id,description,verified,hidden,note,due_date,position from activities where form_id=$1 order by position,id',[f.id]);res.json({form:{...f,activities:activities.rows}})}));
-app.post('/api/forms/:id/activities',asyncRoute(async(req,res)=>{if(req.user.role!=='contador')return fail(res,403,'Solo el contador puede editar controles');const form=await formForUser(req.user,req.params.id);if(!form)return fail(res,404,'Formulario no encontrado');if(form.period_status!=='abierto')return fail(res,409,'Período cerrado');const description=req.body.description;if(typeof description!=='string'||!description.trim()||description.length>250)return fail(res,400,'Descripción inválida');const r=await query('insert into activities(form_id,description,position) values ($1,$2,(select coalesce(max(position),0)+1 from activities where form_id=$1)) returning id',[form.id,description.trim()]);res.status(201).json({activity:r.rows[0]})}));
-app.patch('/api/activities/:id',asyncRoute(async(req,res)=>{if(req.user.role!=='contador')return fail(res,403,'Solo el contador puede editar controles');const a=await query('select form_id from activities where id=$1',[req.params.id]);if(!a.rowCount)return fail(res,404,'Actividad no encontrada');const form=await formForUser(req.user,a.rows[0].form_id);if(!form)return fail(res,404,'Actividad no encontrada');if(form.period_status!=='abierto')return fail(res,409,'Período cerrado');const allowed={description:'description',verified:'verified',hidden:'hidden',note:'note',dueDate:'due_date'};const entries=Object.entries(req.body).filter(([k])=>allowed[k]);if(!entries.length)return fail(res,400,'Sin cambios válidos');for(const [k,v] of entries){if((k==='verified'||k==='hidden')&&typeof v!=='boolean')return fail(res,400,'Valor booleano inválido');if(k==='description'&&(typeof v!=='string'||!v.trim()||v.length>250))return fail(res,400,'Descripción inválida');if(k==='note'&&(typeof v!=='string'||v.length>2000))return fail(res,400,'Observación inválida');if(k==='dueDate'&&v!==null&&(!/^\d{4}-\d{2}-\d{2}$/.test(v)))return fail(res,400,'Fecha inválida')}
+app.get('/api/forms/:id',asyncRoute(async(req,res)=>{
+ const access=await formForUser(req.user,req.params.id);
+ if(access.kind!=='ok')return formAccessFailure(res,access);
+ const activities=await query('select id,description,verified,hidden,note,due_date,position from activities where form_id=$1 order by position,id',[access.form.id]);
+ res.json({form:{...access.form,activities:activities.rows}});
+}));
+app.get('/api/activities/:id/observation',asyncRoute(async(req,res)=>{
+ const access=await activityForUser(req.user,req.params.id);
+ if(access.kind!=='ok')return activityAccessFailure(res,access);
+ res.json({observation:{activity_id:access.activity.id,note:access.activity.note}});
+}));
+app.put('/api/activities/:id/observation',asyncRoute(async(req,res)=>{
+ if(!['contador','administrador'].includes(req.user.role))return fail(res,403,'El cliente solo puede consultar observaciones');
+ const access=await activityForUser(req.user,req.params.id);
+ if(access.kind!=='ok')return activityAccessFailure(res,access);
+ const note=req.body.note;
+ if(typeof note!=='string'||!note.trim()||note.length>2000)return fail(res,400,'La observación es obligatoria y no debe exceder 2000 caracteres');
+ if(access.form.period_status!=='abierto')return fail(res,409,'Período cerrado');
+ const r=await query('update activities set note=$1 where id=$2 returning id,note',[note.trim(),access.activity.id]);
+ res.json({observation:{activity_id:r.rows[0].id,note:r.rows[0].note}});
+}));
+app.delete('/api/activities/:id/observation',asyncRoute(async(req,res)=>{
+ if(!['contador','administrador'].includes(req.user.role))return fail(res,403,'El cliente solo puede consultar observaciones');
+ const access=await activityForUser(req.user,req.params.id);
+ if(access.kind!=='ok')return activityAccessFailure(res,access);
+ if(access.form.period_status!=='abierto')return fail(res,409,'Período cerrado');
+ const r=await query("update activities set note='' where id=$1 returning id,note",[access.activity.id]);
+ res.json({observation:{activity_id:r.rows[0].id,note:r.rows[0].note}});
+}));
+app.post('/api/forms/:id/activities',asyncRoute(async(req,res)=>{if(req.user.role!=='contador')return fail(res,403,'Solo el contador puede editar controles');const access=await formForUser(req.user,req.params.id);if(access.kind!=='ok')return formAccessFailure(res,access);const form=access.form;if(form.period_status!=='abierto')return fail(res,409,'Período cerrado');const description=req.body.description;if(typeof description!=='string'||!description.trim()||description.length>250)return fail(res,400,'Descripción inválida');const r=await query('insert into activities(form_id,description,position) values ($1,$2,(select coalesce(max(position),0)+1 from activities where form_id=$1)) returning id',[form.id,description.trim()]);res.status(201).json({activity:r.rows[0]})}));
+app.patch('/api/activities/:id',asyncRoute(async(req,res)=>{if(req.user.role!=='contador')return fail(res,403,'Solo el contador puede editar controles');const a=await query('select form_id from activities where id=$1',[req.params.id]);if(!a.rowCount)return fail(res,404,'Actividad no encontrada');const access=await formForUser(req.user,a.rows[0].form_id);if(access.kind!=='ok')return formAccessFailure(res,access);const form=access.form;if(form.period_status!=='abierto')return fail(res,409,'Período cerrado');const allowed={description:'description',verified:'verified',hidden:'hidden',note:'note',dueDate:'due_date'};const entries=Object.entries(req.body).filter(([k])=>allowed[k]);if(!entries.length)return fail(res,400,'Sin cambios válidos');for(const [k,v] of entries){if((k==='verified'||k==='hidden')&&typeof v!=='boolean')return fail(res,400,'Valor booleano inválido');if(k==='description'&&(typeof v!=='string'||!v.trim()||v.length>250))return fail(res,400,'Descripción inválida');if(k==='note'&&(typeof v!=='string'||v.length>2000))return fail(res,400,'Observación inválida');if(k==='dueDate'&&v!==null&&(!/^\d{4}-\d{2}-\d{2}$/.test(v)))return fail(res,400,'Fecha inválida')}
  const assigns=entries.map(([k],i)=>`${allowed[k]}=$${i+1}`).join(',');const values=entries.map(([k,v])=>k==='description'?v.trim():v);const r=await query(`update activities set ${assigns} where id=$${values.length+1} returning id`,[...values,req.params.id]);res.json({activity:r.rows[0]})}));
 // Módulos del Administrador: usuarios, períodos, empresas y bitácora.
 // Las escrituras se autorizan en el servidor, nunca solo en la interfaz.
@@ -146,7 +212,8 @@ app.post('/api/admin/periods',adminOnly,asyncRoute(async(req,res)=>{
  if(!r.rowCount)return fail(res,409,'Este período ya existe');await audit(req.user.id,'periods',r.rows[0].id,'abrir',{companyId,month});res.status(201).json({period:r.rows[0]});
 }));
 app.patch('/api/admin/periods/:id',adminOnly,asyncRoute(async(req,res)=>{
- const {status}=req.body;if(!['abierto','cerrado'].includes(status))return fail(res,400,'Estado inválido');
+ const {status,confirmClose}=req.body;if(!['abierto','cerrado'].includes(status))return fail(res,400,'Estado inválido');
+ if(status==='cerrado'&&confirmClose!==true)return fail(res,400,'Debes confirmar el cierre del período');
  const client=await pool.connect();try{await client.query('BEGIN');const old=await client.query('select id,status,company_id,month from periods where id=$1 for update',[req.params.id]);
  if(!old.rowCount){await client.query('ROLLBACK');return fail(res,404,'Período no encontrado')}
  if(status==='cerrado'){const pending=await client.query('select count(*)::int as n from activities a join forms f on f.id=a.form_id where f.period_id=$1 and a.hidden=false and a.verified=false',[req.params.id]);if(pending.rows[0].n){await client.query('ROLLBACK');return fail(res,409,`No se puede cerrar: ${pending.rows[0].n} actividad(es) pendiente(s).`)}}

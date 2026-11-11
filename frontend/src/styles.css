@@ -127,6 +127,13 @@ p,small{color:#777984}
     color: #86BB81;
 }
 
+.form-export-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.template-preview{margin-top:16px;border:1px solid var(--stroke);border-radius:9px;padding:12px}
+.template-preview-heading{display:flex;flex-direction:column;gap:5px;margin-bottom:10px;font-size:11px}
+.template-preview-heading span{color:#79877d}
+.template-preview table{min-width:620px}
+.preview-button{margin-top:14px}
+
 
 /* Acceso centrado, alineado con la identidad de la página de bienvenida. */
 .auth-layout{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 20px;background:#f3f6f8}
