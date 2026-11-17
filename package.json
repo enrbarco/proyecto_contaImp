@@ -7,10 +7,11 @@
     "backend"
   ],
   "scripts": {
-    "test:smoke": "node scripts/smoke.mjs",
     "install:all": "npm install",
-    "dev:web": "npm run dev --workspace=contaimp-web",
     "dev:api": "npm run dev --workspace=contaimp-api",
-    "build": "npm run build --workspace=contaimp-web"
+    "dev:web": "npm run dev --workspace=contaimp-web",
+    "seed": "npm run seed --workspace=contaimp-api",
+    "build": "npm run build --workspace=contaimp-web",
+    "test:smoke": "node scripts/smoke.mjs"
   }
 }

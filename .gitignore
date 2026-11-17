@@ -1,22 +1,19 @@
-# Credenciales y configuración privada
+# Credenciales y configuración privada (solo se suben los ejemplos)
 .env
 .env.*
 !.env.example
 !.env.vercel.example
-**/.env
-**/.env.*
-!**/.env.example
-!**/.env.vercel.example
+
 # Archivos generados
 node_modules/
-**/node_modules/
 dist/
-**/dist/
 .vercel/
 *.log
 *.dump
 *.backup
-.DS_Store
 
-.vercel
-.env*
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

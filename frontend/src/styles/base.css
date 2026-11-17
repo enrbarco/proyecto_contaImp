@@ -1,0 +1,38 @@
+/* ---------- Base ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd { margin: 0; }
+h1, h2, h3 { color: var(--ink); }
+img { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; letter-spacing: inherit; color: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 3px solid rgba(22, 63, 107, .45); outline-offset: 2px; }
+::selection { background: rgba(58, 154, 36, .22); }
+table, strong, small { font-variant-numeric: tabular-nums; }
+
+/* Utilidades */
+.muted { color: var(--muted); }
+.nowrap { white-space: nowrap; }
+.grow { flex: 1; min-width: 0; }
+.text-green { color: var(--green-d); }
+.text-amber { color: var(--amber-strong); }
+
+/* Pantalla de carga inicial */
+.startup { min-height: 100dvh; display: grid; place-items: center; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

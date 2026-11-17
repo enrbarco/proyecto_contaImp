@@ -1,0 +1,7 @@
+/* ContaImp · hoja de estilos de la aplicación (después del inicio de sesión).
+   La portada pública tiene sus propios estilos en pages/landing/landing.css. */
+@import './tokens.css';
+@import './base.css';
+@import './components.css';
+@import './layout.css';
+@import './pages.css';

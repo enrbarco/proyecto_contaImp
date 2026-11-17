@@ -1,4 +1,4 @@
-import app from '../backend/src/server.js';
+import app from '../backend/src/app.js';
 
 // Conecta las rutas /api/* de Vercel con Express.
 export default function handler(req, res) {
