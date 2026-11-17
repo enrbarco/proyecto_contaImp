@@ -88,9 +88,9 @@ export default function FormDetail({ id }) {
         <div className="overview-head">
           <span className="overview-icon"><FileText size={26} /></span>
           <div>
-            <span className="eyebrow">Formulario de control contable</span>
-            <h2>{form.template_name}</h2>
-            <p>{form.company_name} <span aria-hidden="true">·</span> {month}</p>
+            <span className="eyebrow">Empresa y período</span>
+            <h2>{form.company_name}</h2>
+            <p>{month}</p>
           </div>
           <div className="overview-actions">
             <button type="button" className={`button button-secondary${excel ? ' is-on' : ''}`} aria-pressed={excel} onClick={() => setExcel((v) => !v)}><FileSpreadsheet size={16} /> Vista Excel</button>

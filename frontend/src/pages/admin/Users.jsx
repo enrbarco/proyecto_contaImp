@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, KeyRound, Plus, Save, UserPlus } from 'lucide-react';
+import { Building2, KeyRound, Pencil, Plus, Save, UserPlus } from 'lucide-react';
 import { useApp } from '../../AppContext.jsx';
 import { useApiData } from '../../hooks/useApiData.js';
 import { api } from '../../lib/api.js';
@@ -107,6 +107,14 @@ export default function UsersPage() {
 
   const closeCreate = () => { setCreating(false); setErrors({}); };
 
+  /** "Empresa A", "Empresa A y Empresa B" o "Empresa A y 2 más"; "Sin asignar" si no tiene. */
+  function companyNames(ids = []) {
+    const names = ids.map((id) => companies.find((c) => String(c.id) === String(id))?.name).filter(Boolean);
+    if (!names.length) return 'Sin asignar';
+    if (names.length <= 2) return names.join(' y ');
+    return `${names[0]} y ${names.length - 1} más`;
+  }
+
   return (
     <>
       <PageHeading
@@ -128,8 +136,13 @@ export default function UsersPage() {
                   {Object.entries(ROLE_NAMES).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                 </select>,
                 u.role === 'administrador'
-                  ? <span className="muted">Todas</span>
-                  : <button type="button" className="link-button" onClick={() => setCompaniesFor(u)}>{u.company_ids?.length || 0} · Editar</button>,
+                  ? <span className="muted">Todas (administrador)</span>
+                  : (
+                    <button type="button" className="company-assign" onClick={() => setCompaniesFor(u)} title="Cambiar empresas asignadas">
+                      <span>{companyNames(u.company_ids)}</span>
+                      <Pencil size={14} />
+                    </button>
+                  ),
                 <Tag tone={u.active ? 'success' : 'neutral'}>{u.active ? 'Activo' : 'Inactivo'}</Tag>,
                 <div className="row-actions">
                   <button type="button" className="icon-button" title="Restablecer contraseña" aria-label={`Restablecer contraseña de ${u.name}`} disabled={busy} onClick={() => setPasswordFor(u)}><KeyRound size={17} /></button>

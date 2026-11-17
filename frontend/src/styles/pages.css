@@ -177,3 +177,12 @@
 @media (max-width: 360px) {
   .kpi-grid { grid-template-columns: 1fr; }
 }
+
+/* Empresas asignadas en la tabla de usuarios: nombres + lápiz para cambiarlas */
+.company-assign {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 260px; min-height: 36px; padding: 0 12px;
+  background: var(--tint); border: 0; border-radius: 999px; color: var(--navy); font-size: 14px; font-weight: 500; text-align: left;
+}
+.company-assign span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.company-assign svg { flex: none; color: var(--muted); }
+@media (hover: hover) { .company-assign:hover { background: var(--tint-2); } }

@@ -3,15 +3,15 @@ import { LogOut, Menu, Settings2, UserRound, X } from 'lucide-react';
 import { useApp } from '../../AppContext.jsx';
 import { useBodyLock } from '../../hooks/useBodyLock.js';
 import { ROLE_NAMES, initials } from '../../lib/format.js';
+import { HeadingSlotContext } from './PageHeading.jsx';
 import logo from '../../assets/logo.webp';
-
-const AREA = { administrador: 'Panel del administrador', contador: 'Espacio del contador', cliente: 'Portal del cliente' };
 
 /** Estructura de la app con sesión: menú lateral (cajón en el celular), barra superior y contenido. */
 export default function AppLayout({ pages, current, children }) {
   const { user, navigate, logout } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [headingSlot, setHeadingSlot] = useState(null);
   useBodyLock(menuOpen);
 
   // Al cambiar de página se cierran el menú móvil y el de cuenta.
@@ -39,7 +39,7 @@ export default function AppLayout({ pages, current, children }) {
     <div className="app-shell">
       <aside className={`sidebar${menuOpen ? ' is-open' : ''}`} aria-label="Menú">
         <div className="sidebar-brand">
-          <img src={logo} alt="ContaImp" width="220" height="94" />
+          <img src={logo} alt="ContaImp" width="600" height="270" />
           <button type="button" className="icon-button sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Cerrar menú"><X size={20} /></button>
         </div>
 
@@ -94,11 +94,12 @@ export default function AppLayout({ pages, current, children }) {
       <div className="app-main">
         <header className="topbar">
           <button type="button" className="icon-button topbar-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Menu size={22} /></button>
-          <img className="topbar-logo" src={logo} alt="ContaImp" width="98" height="42" />
-          <span className="topbar-area">{AREA[user.role]}</span>
+          <div className="topbar-heading" ref={setHeadingSlot} />
           <button type="button" className="avatar avatar-small topbar-avatar" onClick={() => navigate('cuenta')} aria-label="Mi perfil">{initials(user.name)}</button>
         </header>
-        <main className="page">{children}</main>
+        <main className="page">
+          <HeadingSlotContext.Provider value={headingSlot}>{children}</HeadingSlotContext.Provider>
+        </main>
       </div>
     </div>
   );

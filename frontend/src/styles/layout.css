@@ -11,8 +11,9 @@
   background: rgba(255, 255, 255, .82); backdrop-filter: saturate(180%) blur(24px); -webkit-backdrop-filter: saturate(180%) blur(24px);
   border-right: 1px solid var(--line);
 }
-.sidebar-brand { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 6px 22px; }
-.sidebar-brand img { width: 100%; max-width: 200px; height: auto; }
+.sidebar-brand { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 0 26px; }
+/* El logo ocupa el mismo ancho que las opciones del menú y queda centrado sobre ellas */
+.sidebar-brand img { width: 100%; height: auto; }
 .sidebar-close { display: none; }
 
 .sidebar-nav { display: grid; gap: 2px; }
@@ -58,20 +59,24 @@
 
 /* ---------- Contenido ---------- */
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* Barra superior: lleva el título de la página, su descripción y sus acciones */
 .topbar {
-  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; height: var(--topbar-h); padding: 0 clamp(16px, 3vw, 40px);
-  background: rgba(245, 245, 247, .8); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
+  min-height: var(--topbar-h); padding: 10px clamp(16px, 3vw, 40px);
+  background: rgba(245, 245, 247, .82); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line);
 }
-.topbar-menu, .topbar-logo { display: none; }
-.topbar-area { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-menu { display: none; }
+.topbar-heading { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
+.topbar-back { margin-left: -8px; color: var(--navy); }
+.topbar-title { flex: 1; min-width: 0; }
+.topbar-title h1 { font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-title p { margin-top: 2px; font-size: 13.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-actions { display: flex; flex: none; align-items: center; gap: 10px; }
+.topbar-actions .button { min-height: 40px; }
 
-.page { width: 100%; max-width: 1180px; margin: 0 auto; padding: 4px clamp(16px, 3vw, 40px) 72px; }
-.page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 22px 0 24px; }
-.page-heading h1 { font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -.024em; }
-.page-heading p { margin-top: 6px; color: var(--muted); font-size: 16px; }
-.page-actions { display: flex; flex: none; align-items: center; gap: 10px; }
-.back-link { margin: -6px 0 6px -2px; font-size: 15px; }
+.page { width: 100%; max-width: 1180px; margin: 0 auto; padding: 24px clamp(16px, 3vw, 40px) 72px; }
 
 /* ---------- Tablet vertical y celular: el menú pasa a cajón ---------- */
 @media (max-width: 1000px) {
@@ -83,23 +88,26 @@
   }
   .sidebar.is-open { transform: none; visibility: visible; transition: transform .4s var(--ease), visibility 0s; }
   .sidebar-brand { justify-content: space-between; }
-  .sidebar-brand img { max-width: 170px; }
+  .sidebar-brand img { width: auto; max-width: calc(100% - 52px); }
   .sidebar-close { display: inline-grid; }
   .sidebar-overlay { display: block; position: fixed; inset: 0; z-index: 55; border: 0; background: rgba(15, 23, 42, .36); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: fade-in .25s ease; }
 
-  .topbar { display: grid; grid-template-columns: 44px 1fr 44px; height: 56px; padding-top: env(safe-area-inset-top); }
+  .topbar { padding-top: calc(10px + env(safe-area-inset-top)); }
   .topbar-menu { display: inline-grid; margin-left: -8px; color: var(--navy); }
-  .topbar-logo { display: block; justify-self: center; height: 40px; width: auto; }
-  .topbar-area { display: none; }
-  .topbar-avatar { justify-self: end; }
+  .topbar-back { margin-left: -4px; }
 }
 
 @media (max-width: 760px) {
-  .page-heading { flex-direction: column; align-items: stretch; padding: 14px 0 18px; }
-  .page-heading h1 { font-size: 28px; }
-  .page-heading p { font-size: 15px; }
-  .page-actions { justify-content: flex-start; }
-  .page-actions .button { flex: 1; }
+  /* En el celular la descripción se oculta y las acciones bajan a una segunda fila */
+  .topbar { flex-wrap: wrap; gap: 8px 10px; }
+  .topbar-heading { display: contents; }
+  .topbar-title { order: 1; }
+  .topbar-avatar { order: 2; }
+  .topbar-title h1 { font-size: 18px; }
+  .topbar-title p { display: none; }
+  .topbar-actions { order: 3; flex-basis: 100%; }
+  .topbar-actions .button { flex: 1; }
+  .page { padding-top: 16px; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
