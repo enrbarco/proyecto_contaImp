@@ -34,7 +34,7 @@ async function auth(req,res,next){
 } 
 async function canAccess(user,companyId){if(user.role==='administrador')return true;const r=await query('select 1 from user_company where user_id=$1 and company_id=$2',[user.id,companyId]);return r.rowCount>0}
 async function formForUser(user,id){
- const r=await query(`select f.*, c.name as company_name,p.month as period_month,p.status as period_status,t.name as template_name from forms f join companies c on c.id=f.company_id join periods p on p.id=f.period_id join templates t on t.id=f.template_id where f.id=$1`,[id]);
+ const r=await query(`select f.*, c.name as company_name,p.month as period_month,p.status as period_status,p.closed_at,cu.name as closed_by_name,t.name as template_name from forms f join companies c on c.id=f.company_id join periods p on p.id=f.period_id left join users cu on cu.id=p.closed_by join templates t on t.id=f.template_id where f.id=$1`,[id]);
  if(!r.rowCount)return {kind:'not-found'};
  const form=r.rows[0];
  if(!(await canAccess(user,form.company_id)))return {kind:'forbidden'};
@@ -58,7 +58,7 @@ function activityAccessFailure(res,access){
 }
 function validMonth(v){return /^\d{4}-(0[1-9]|1[0-2])$/.test(v||'')}
 app.get('/api/health',asyncRoute(async(_req,res)=>{await query('select 1');res.json({status:'ok',database:'connected'})}));
-app.post('/api/auth/login',authLimit,asyncRoute(async(req,res)=>{const {email,password}=req.body;if(typeof email!=='string'||typeof password!=='string')return fail(res,400,'Correo y contraseña son obligatorios');const r=await query('select * from users where lower(email)=lower($1) and active=true',[email.trim()]);if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return fail(res,401,'Correo o contraseña incorrectos');const user=userSafe(r.rows[0]);const token=jwt.sign({...user,passwordVersion:r.rows[0].password_version},process.env.JWT_SECRET,{expiresIn:'30m',algorithm:'HS256'});res.cookie('contaimp_session',token,{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:30*60*1000,path:'/'});res.json({user})}));
+app.post('/api/auth/login',authLimit,asyncRoute(async(req,res)=>{const {email,password}=req.body;if(typeof email!=='string'||typeof password!=='string')return fail(res,400,'Correo y contraseña son obligatorios');const r=await query('select * from users where lower(email)=lower($1)',[email.trim()]);if(!r.rowCount||!(await bcrypt.compare(password,r.rows[0].password_hash)))return fail(res,401,'Correo o contraseña incorrectos');if(!r.rows[0].active)return fail(res,403,'Tu cuenta está desactivada. Comunícate con el administrador.');const user=userSafe(r.rows[0]);const token=jwt.sign({...user,passwordVersion:r.rows[0].password_version},process.env.JWT_SECRET,{expiresIn:'30m',algorithm:'HS256'});res.cookie('contaimp_session',token,{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:30*60*1000,path:'/'});res.json({user})}));
 // HU-06: recuperación con enlace temporal de un solo uso; nunca se devuelve el token por API.
 const resetLimit=rateLimit({windowMs:15*60*1000,limit:5,standardHeaders:'draft-7',legacyHeaders:false});
 const resetMessage='Si el correo corresponde a una cuenta activa, recibirás las instrucciones para recuperar tu contraseña.';
@@ -203,7 +203,7 @@ app.patch('/api/admin/users/:id',adminOnly,asyncRoute(async(req,res)=>{
  }catch(e){await client.query('ROLLBACK');if(e.code==='23503'||e.code==='22P02')return fail(res,400,'Empresa inválida');throw e}finally{client.release()}
 }));
 app.get('/api/admin/periods',adminOnly,asyncRoute(async(req,res)=>{
- const r=await query(`select p.id,p.month,p.status,p.company_id,c.name as company_name,p.closed_at,coalesce(count(distinct f.id),0)::int as form_count,coalesce(count(a.id) filter(where a.hidden=false),0)::int as total,coalesce(count(a.id) filter(where a.hidden=false and a.verified),0)::int as completed from periods p join companies c on c.id=p.company_id left join forms f on f.period_id=p.id left join activities a on a.form_id=f.id where ($1::text is null or p.company_id::text=$1) group by p.id,c.name order by p.month desc,c.name`,[req.query.companyId||null]);
+ const r=await query(`select p.id,p.month,p.status,p.company_id,c.name as company_name,p.closed_at,cu.name as closed_by_name,coalesce(count(distinct f.id),0)::int as form_count,coalesce(count(a.id) filter(where a.hidden=false),0)::int as total,coalesce(count(a.id) filter(where a.hidden=false and a.verified),0)::int as completed from periods p join companies c on c.id=p.company_id left join users cu on cu.id=p.closed_by left join forms f on f.period_id=p.id left join activities a on a.form_id=f.id where ($1::text is null or p.company_id::text=$1) group by p.id,c.name,cu.name order by p.month desc,c.name`,[req.query.companyId||null]);
  res.json({periods:r.rows});
 }));
 app.post('/api/admin/periods',adminOnly,asyncRoute(async(req,res)=>{
